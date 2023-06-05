@@ -1,0 +1,152 @@
+// Document settings
+:copyright: Copyright (c) 2023 Nessan Fitzmaurice
+:stem: latexmath
+:icons: font
+:data-uri:
+:nofooter:
+:reproducible:
+ifndef::site-gen-antora[:toc: left]
+
+// Links & shortcuts
+:gf2: https://en.wikipedia.org/wiki/GF(2)[GF(2)]
+:f2: pass:m[stem:[\mathbb{F}_2]]
+:galois-field:  https://en.wikipedia.org/wiki/Finite_field[Galois Field]
+:vec: pass:q[`xref:./documentation/reference-manual/pages/Vector/Vector.adoc[GF2::Vector]`]
+:mat: pass:q[`xref:./documentation/reference-manual/pages/Matrix/Matrix.adoc[GF2::Matrix]`]
+:std-bitset: pass:q[`https://en.cppreference.com/w/cpp/utility/bitset[std::bitset]`]
+:std-vector: pass:q[`https://en.cppreference.com/w/cpp/container/vector[std::vector]`]
+:boost-bitset: pass:q[`https://www.boost.org/doc/libs/1_80_0/libs/dynamic_bitset/dynamic_bitset.html[boost::dynamic_bitset]`]
+:eigen: pass:q[`https://eigen.tuxfamily.org/index.php?title=Main_Page[Eigen]`]
+:doxygen: https://www.doxygen.nl/index.html[Doxygen]
+:markdown: https://en.wikipedia.org/wiki/Markdown[Markdown]
+:asciidoc: https://asciidoctor.org/docs/what-is-asciidoc/#what-is-asciidoc[AsciiDoc]
+:antora: https://antora.org[Antora]
+:documentation: https://gf2pp.netlify.app/gf2pp/latest/reference-manual/overview/[documentation]
+:documentation-notes: https://gf2pp.netlify.app/gf2pp/latest/documentation-strategy/all-in-one/[documentation notes]
+:cayley-hamilton: https://en.wikipedia.org/wiki/Cayley–Hamilton_theorem[Cayley Hamilton]
+:strassen-url: https://en.wikipedia.org/wiki/Strassen_algorithm
+
+= `GF2++`
+
+== Overview
+
+`GF2++` is a header-only {cpp} library that provides classes for boolean vectors and matrices -- sometimes referred to as _bit-vectors_ and _bit-matrices_.
+
+In the jargon of professional mathematics the classes make it possible to perform linear algebra over {gf2} (also known as {f2}), the simplest {galois-field} with just two elements 0 & 1.
+
+In {f2}, addition/subtraction and multiplication/division operations are all done mod 2 which keeps everything closed in the set stem:[\{0,1\}].
+
+The library is header-only so there is nothing to compile & link -- just drop the small `GF2/` directory somewhere convenient and you are good to go.
+The corresponding namespace `GF2` houses the two main classes {vec} and {mat}.
+
+A rich interface is provided to set up and manipulate bit-vectors and bit-matrices in various ways and of course to allow them to interact.
+Because arithmetic in {f2} is always done mod 2, addition/subtraction becomes the `XOR` operation while multiplication/division becomes `AND`.
+`GF2++` uses those equivalences to perform most interactions on and between bit-vectors and bit-matrices very efficiently by working on whole blocks of elements at a time.
+
+For example, this library makes it possible to quickly extract the characteristic polynomial for a square {mat} with millions of elements--a problem that chokes a naive implementation that does not take into account the special nature of arithmetic in {f2}.
+
+Here is a simple example:
+
+[source,cpp]
+----
+#include <GF2/Matrix.h>
+int main()
+{
+    auto M = GF2::Matrix<>::random(6);                  // <.>
+    auto c = GF2::characteristic_polynomial(M);         // <.>
+    std::cout << "The GF2::Matrix:\n" << M << "\n";
+    std::cout << "has a characteristic polynomial with coefficients: " << c << "\n";
+    std::cout << "The characteristic polynomial sum of the bit-matrix (should be all zeros):\n";
+    std::cout << GF2::polynomial_sum(c, M) << "\n";     // <.>
+    return 0;
+}
+----
+<.> This creates a randomly filled stem:[6 \times 6] bit-matrix `M` where 0 & 1 are equally probable to occur.
+<.> Extracts the coefficients for the characteristic polynomial of that matrix as a bit-vector `c` with seven elements. +
+The polynomial has the form stem:[c_0 + c_1 x + c_2 x^2 + ... + c_6 x^6].
+<.> Verify that `M` satisfies its own characteristic equation (as is known from the {cayley-hamilton} theorem) i.e. that +
+stem:[c_0 I + c_1 M + c_2 M^2 + ... + c_6 M^6 = 0] where stem:[I] and stem:[0] are the stem:[6 \times 6] identity and zero matrices respectively.
+
+.Possible Output (the bit-matrix and characteristic polynomial varies from run to run):
+[source]
+----
+The GF2::Matrix:
+000011
+111100
+001010
+001000
+001011
+010010
+has a characteristic polynomial with coefficients: 0011111
+The characteristic polynomial sum of the bit-matrix (should be all zeros):
+000000
+000000
+000000
+000000
+000000
+000000
+----
+
+== Why Use `GF2++`?
+
+The standard library already has {std-bitset} which is an efficient _bitset_ class.
+Recognizing that {std-bitset} is familiar and well thought through, {vec} replicates and extends much of that basic interface.
+
+While {std-bitset} objects have a fixed size determined at compile time there is a dynamic version {boost-bitset} in the well known _Boost_ library where the size can be set and changed at runtime.
+
+As the names suggest, in both cases the defined types are aimed at _bitsets_ as opposed to _bit-vectors_.
+So for example, they print in _bit-order_ with the least significant element/bit on the right.
+More importantly neither class has any particular methods aimed at performing linear algebra.
+
+On the other hand, there are several well known linear algebra libraries such as {eigen}.
+Those libraries are highly optimized for all the standard _numeric_ types (floats, doubles, integers etc.) but they do not really handle {f2} all that well.
+They will let you create matrices of integers where all the elements are 0 or 1 but there is no builtin knowledge in those libraries that arithmetic is always performed mod 2.
+
+For example, you might use {eigen} to create an integer matrix of all 0's and 1's and then use a builtin function from that library to extract the characteristic polynomial.
+Modding the coefficients of that polynomial with 2 gets the appropriate version for {f2}.
+Technically this works but you will run in to overflow problems for even fairly modest sized matrices with just a few hundred rows and columns.
+Of course, you might use an underlying `BitInt` type that never overflows but then the calculations become dog slow for larger bit-matrices so that doesn't help much.
+
+If you work over {gf2} a specialized solution such as the one offered here is a much better way to go.
+This might be the case if for example, your interest is in certain areas of cryptography or random number generation.
+
+== The Documentation
+
+The library has extensive long form {documentation}.
+That reference material includes many small copyable example programs that exercise all the key functionality of the library.
+There are also some technical notes that review some of the particular peculiarities of doing linear algebra over {f2}.
+
+In addition, brief _in-source_ documentation is provided for all the publicly accessible methods, functions, and data members.
+That in-source documentation is done in the usual manner using code comments that are formatted with a very minimal set of {doxygen} commands/tags.
+Many code editors can parse those comments and use them to provide useful _tool tips_ etc.
+
+The long form documentation is written in {asciidoc}, a markup language that is richer than the ubiquitous {markdown} but still pretty light weight.
+The site generator {antora} was used to marry those AsciiDoc content files with others that define a look and feel to produce the static {documentation} website.
+
+On the site there are also some {documentation-notes} which discuss the experience of using {asciidoc} and {antora} for the long form documentation.
+It covers some of the positives and negatives of that experience and may be of interest in its own right.
+
+== TODO
+
+.Parallel Processing
+The library performs operations on and between bit-matrices and bit-vectors in whole blocks at a time.
+So at a fundamental level the library is efficient and is already in a sense performing natural parallel processing.
+It is certainly possible to further enhance that efficiency by using the computational capacities of graphic processors and so on.
+After all our operations ultimately are on and between integer values and GPU's can be great at manipulating multiple integer values at once.
+
+.Block Iterative Algorithms
+Another field of development would be to improve on the underlying algorithms used in the library.
+At the moment these are mostly rather plain vanilla textbook recipes adjusted to account for the fact we are dealing with arithmetic in {f2}.
+
+In many problems of interest if the bit-matrix is stem:[n \times n] the algorithm may take stem:[\mathcal{O}(n^3)] operations or worse.
+Block iterative methods exist that, theoretically at least, reduce those counts to something sub-cubic (e.g. using the {strassen-url}[Strassen algorithm] for matrix multiplication).
+In practice, the speedups will only be significant for very very large systems but those do occur in some cryptographic situations for example.
+
+== Contact
+
+You can contact me by sending an email mailto:nzznfitz+gf2@icloud.com[here].
+
+== Copyright and License
+
+Copyright (c) 2022-present Nessan Fitzmaurice and released under the MIT License.
+See the link:LICENSE[license file] to view the full text.
